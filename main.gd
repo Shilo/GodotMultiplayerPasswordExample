@@ -32,23 +32,25 @@ func _ready():
 	
 	# Both client and server need an authenication callback to work.
 	# Tanto el cliente como el servidor necesitan una devolución de llamada de autenticación para funcionar.
-	multiplayer.auth_callback = _on_authenticate_peer
+	multiplayer.auth_callback = _on_receive_auth_request
 	
 	# Host on first window, join on additional windows.
 	# Debugger will show 1 error, but it's expected to force client to join.
 	# Hospede en la primera ventana, únase en ventanas adicionales.
 	# El depurador mostrará 1 error, pero se espera que obligue al cliente a unirse.
-	if host():
-		print_rich("[color=gray]Hosting server. Server password: \"%s\"." % SERVER_PASSWORD)
-		return
+	var is_hosting = host()
 	
 	# Wait a short time only for cleaner logging.
 	# Espere un momento solo para un registro más limpio.
-	await get_tree().create_timer(0.1).timeout
+	await get_tree().create_timer(0.1 if is_hosting else 0.2).timeout
 	
-	join_host()
+	if is_hosting:
+		print_rich("[color=gray]Hosting server. Server password: \"%s\"." % SERVER_PASSWORD)
+		return
+	
+	join_server()
 
-func join_host():
+func join_server():
 	# Client will attempt to connect multiple times with different passwords for testing.
 	# El cliente intentará conectarse varias veces con diferentes contraseñas para realizar pruebas.
 	for password in client_password_attempts:
@@ -81,22 +83,16 @@ func _on_peer_authenticating(id: int):
 	var password_data = valid_password.to_utf8_buffer()
 	
 	# We send the password request as bytes to server.
+	# This will call _on_receive_auth_request on the server.
 	# Enviamos la solicitud de contraseña como bytes al servidor.
+	# Esto llamará a _on_receive_auth_request en el servidor.
 	multiplayer.send_auth(id, password_data)
 	
 	# Client needs to complete authentication also.
 	# El cliente también necesita completar la autenticación.
 	multiplayer.complete_auth(id)
 
-func _on_peer_authentication_failed(id: int):
-	if multiplayer.is_server(): return
-	# On client:
-	# En el cliente:
-	super._on_peer_authentication_failed(id)
-	
-	print_rich("[color=orange]Failed to authenticate client. Client password: \"%s\", Server password: \"%s\"." % [client_password, SERVER_PASSWORD])
-
-func _on_authenticate_peer(id: int, data: PackedByteArray):
+func _on_receive_auth_request(id: int, data: PackedByteArray):
 	if !multiplayer.is_server(): return
 	# On server:
 	# En el servidor:
@@ -122,12 +118,13 @@ func _on_authenticate_peer(id: int, data: PackedByteArray):
 		# Si las contraseñas no coinciden, desconectamos el cliente.
 		multiplayer.multiplayer_peer.disconnect_peer(id)
 
-func _on_connected_to_server():
-	super._on_connected_to_server()
+func _on_peer_authentication_failed(id: int):
+	if multiplayer.is_server(): return
+	# On client:
+	# En el cliente:
+	super._on_peer_authentication_failed(id)
 	
-	# Client successfully connected to server with valid password.
-	# El cliente se conectó exitosamente al servidor con una contraseña válida.
-	print_rich("[color=green]Connected to server. Client password: \"%s\", Server password: \"%s\"." % [client_password, SERVER_PASSWORD])
+	print_rich("[color=orange]Failed to authenticate client. Client password: \"%s\", Server password: \"%s\"." % [client_password, SERVER_PASSWORD])
 
 func _on_connection_failed():
 	super._on_connection_failed()
@@ -135,3 +132,10 @@ func _on_connection_failed():
 	# Client failed to connect to server with invalid password or network problem.
 	# El cliente no pudo conectarse al servidor con una contraseña no válida o un problema de red.
 	print_rich("[color=orange]Failed to connect to server. Client password: \"%s\", Server password: \"%s\"." % [client_password, SERVER_PASSWORD])
+
+func _on_connected_to_server():
+	super._on_connected_to_server()
+	
+	# Client successfully connected to server with valid password.
+	# El cliente se conectó exitosamente al servidor con una contraseña válida.
+	print_rich("[color=green]Connected to server. Client password: \"%s\", Server password: \"%s\"." % [client_password, SERVER_PASSWORD])
